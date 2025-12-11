@@ -1,25 +1,24 @@
-Markdown
-
 # Agentic FDE Demo: Secure AI-to-Enterprise Integration
 
 ## Overview
 This project is a hands-on demonstration of a "Forward Deployed Engineer (FDE)" architecture. It showcases how to bridge the gap between a deterministic Enterprise System (using **FastAPI** and **Pydantic**) and a probabilistic AI Agent (using **OpenAI Function Calling**).
 
-This architecture mimics a real-world scenario where an AI platform needs to securely query and act upon data residing in a legacy enterprise database.
+Crucially, this demo implements **Zero Trust Security**. The AI Agent is not given admin access; it must authenticate using a **Bearer Token** and is restricted by **Role-Based Access Control (RBAC)** scopes.
 
 ### Key Technologies
 | Component | Technology | Purpose in Architecture |
 | :--- | :--- | :--- |
-| **Enterprise API** | FastAPI (Python) | The asynchronous, non-blocking backend server hosting the business logic. |
-| **Data Validation** | Pydantic | Enforces strict data contracts (schema) for inputs and outputs, preventing data corruption. |
-| **The Brain** | OpenAI (GPT-4o) | Acts as the reasoning engine to decide *which* tool to call and *what* arguments to use. |
-| **The Glue** | Python (`requests`) | The runtime environment that executes the AI's decision by making the actual HTTP call. |
+| **Enterprise API** | FastAPI (Python) | The asynchronous backend hosting the business logic. |
+| **Security** | OAuth2 / Scopes | Enforces Least Privilege. The Agent needs specific scopes (e.g., `write:refunds`) to execute actions. |
+| **Data Validation** | Pydantic | Enforces strict data contracts (schema) for inputs and outputs. |
+| **The Brain** | OpenAI (GPT-4o) | Acts as the reasoning engine to decide *which* tool to call. |
+| **The Glue** | Python (`requests`) | The runtime that securely injects credentials and executes the AI's decision. |
 
 ---
 
 ## Architecture Diagram
 
-This diagram illustrates the complete request flow. The user's intention is translated by the LLM into a structured tool call, which is then executed by the Python runtime against the FastAPI server.
+This diagram illustrates the secure request flow. Note that the LLM *decides* the action, but the Python Runtime *injects* the credentials before hitting the API.
 
 ```mermaid
 sequenceDiagram
@@ -29,28 +28,30 @@ sequenceDiagram
     participant S as 🏢 Enterprise API (FastAPI)
     participant D as 🗄️ Database (Mock)
 
-    U->>A: "Check status of order ORD-123"
-    Note over A,L: The Agent is the Orchestrator
+    U->>A: "Refund order ORD-123"
+    
+    A->>L: Send Prompt + Tool Definitions
+    L-->>A: Response: Call "process_refund"
+    Note over A: Agent loads "super-agent-secret"
 
-    A->>L: Send Prompt + Tool Definitions (JSON Schema)
-    L-->>A: Response: Call "get_order" with {"order_id": "ORD-123"}
-    Note over A: Agent parses JSON, prepares HTTP request
+    A->>S: POST /refunds (Header: Bearer Token)
+    
+    Note right of S: 🔒 Security Check 1: Verify Token
+    Note right of S: 🔒 Security Check 2: Verify "write" Scope
+    
+    S->>D: Update Order Data
+    D-->>S: Return Success
+    
+    S-->>A: Return JSON Response
+    A-->>U: Final Answer: "Refund processed."
 
-    A->>S: GET /orders/ORD-123 (HTTP)
-    Note over S: Pydantic Validates Request
 
-    S->>D: Query Order Data
-    D-->>S: Return Raw Data
-    Note over S: Pydantic Validates Response Schema
-
-    S-->>A: Return Structured JSON Response
-    A-->>U: Final Answer based on API data
 Prerequisites
 Python 3.10+: Ensure Python is installed and accessible via terminal.
 
 OpenAI API Key: You need a valid API key from platform.openai.com.
 
-Setup & Installation (Do This First)
+Setup & Installation
 Clone or Create Project Folder
 
 Bash
@@ -75,76 +76,62 @@ Bash
 pip install fastapi uvicorn pydantic openai requests
 Set OpenAI API Key
 
-Mac/Linux:
+Mac/Linux: export OPENAI_API_KEY="sk-your-key-here"
 
-Bash
+Windows: $env:OPENAI_API_KEY = "sk-your-key-here"
 
-export OPENAI_API_KEY="sk-your-actual-key-goes-here"
-Windows (PowerShell):
+Running the Demo
+This demo requires two separate terminal windows running simultaneously.
 
-PowerShell
+🖥️ Terminal 1: The Secure Server
+This represents the Enterprise API with Role-Based Access Control.
 
-$env:OPENAI_API_KEY = "sk-your-actual-key-goes-here"
-Running the Demo (The "FDE" Experience)
-This demo requires two separate terminal windows running simultaneously to simulate a real Client/Server architecture.
-
-🖥️ Terminal 1: The Enterprise Server (FastAPI)
-This represents the backend system with business rules and a database.
-
-Make sure your virtual environment is active (source venv/bin/activate).
+Navigate to the folder and activate venv.
 
 Run the server:
 
 Bash
 
 python main.py
-Success Confirmation: You should see logs starting with:
+You should see: Uvicorn running on http://0.0.0.0:8000
 
-Plaintext
+🤖 Terminal 2: The Authenticated Agent
+This represents the Client Application.
 
-INFO:     Started server process [12345]
-INFO:     Uvicorn running on [http://0.0.0.0:8000](http://0.0.0.0:8000) (Press CTRL+C to quit)
-Leave this terminal window open. Do not close it.
+Open a new terminal, navigate to folder, activate venv.
 
-💡 Pro Tip: Open your browser to http://localhost:8000/docs to see the auto-generated Swagger UI. You can test your endpoints manually right from the browser!
-
-🤖 Terminal 2: The AI Agent (Client)
-This represents the Agentic AI application that will talk to the server.
-
-Open a new terminal window.
-
-Navigate to the same folder:
-
-Bash
-
-cd agent-fde-demo
-Activate the same virtual environment:
-
-Bash
-
-source venv/bin/activate
-Ensure your API Key is set in this window too (repeat step 4 from Setup if needed).
-
-Run the agent script:
+Run the agent:
 
 Bash
 
 python agent.py
-Expected Output
-If the architecture is working correctly, you will see the full "ReAct" loop in action in Terminal 2:
+Testing Security Scenarios
+This architecture demonstrates RBAC (Role-Based Access Control). You can modify agent.py to simulate different security levels.
+
+Scenario A: The "Super Agent" (Default)
+Token: super-agent-secret
+
+Scopes: read:orders, write:refunds
+
+Result: The Agent successfully processes the refund.
+
+Scenario B: The "Junior Agent" (Permission Denied)
+Open agent.py.
+
+Change line 10 to: API_TOKEN = "junior-agent-secret"
+
+Run python agent.py.
+
+Result:
 
 Plaintext
 
-👤 User: Can you check the status of order ORD-123?
-🤖 LLM Thought: I need to call get_order
-🔌 Executing API Call: get_order with args {'order_id': 'ORD-123'}
-✅ API Result: {'order_id': 'ORD-123', 'status': 'shipped', 'total': 150.0}
-Simultaneously, in Terminal 1 (The Server), you will see the incoming request logged:
+🤖 LLM Thought: Call process_refund
+🔌 Executing: process_refund...
+✅ API Result: Error: Permission Denied. You do not have the scope to perform this action.
+This proves the API is protecting the database even if the AI tries to access it.
 
-Plaintext
-
-INFO:     127.0.0.1:58493 - "GET /orders/ORD-123 HTTP/1.1" 200 OK
 Key Files
-main.py: The FastAPI application. This defines the API endpoints, the mocked database, and the Pydantic data models that serve as the strict contract.
+main.py: The FastAPI server. It defines the Security Dependencies (has_scope), the Pydantic models, and the mocked database.
 
-agent.py: The Python client that connects to OpenAI. It defines the Tools (JSON schema) and contains the glue code (requests.get/post) to execute the LLM's instructions against the local API.
+agent.py: The OpenAI Client. It manages the tool definitions, handles the HTTP requests library, and injects the Authorization headers.
