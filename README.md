@@ -44,7 +44,7 @@ sequenceDiagram
     
     S-->>A: Return JSON Response
     A-->>U: Final Answer: "Refund processed."
-
+```
 
 Prerequisites
 Python 3.10+: Ensure Python is installed and accessible via terminal.
