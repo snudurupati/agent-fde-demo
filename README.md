@@ -11,7 +11,7 @@ Crucially, this demo implements **Zero Trust Security**. The AI Agent is not giv
 | **Enterprise API** | FastAPI (Python) | The asynchronous backend hosting the business logic. |
 | **Security** | OAuth2 / Scopes | Enforces Least Privilege. The Agent needs specific scopes (e.g., `write:refunds`) to execute actions. |
 | **Data Validation** | Pydantic | Enforces strict data contracts (schema) for inputs and outputs. |
-| **The Brain** | OpenAI (GPT-4o) | Acts as the reasoning engine to decide *which* tool to call. |
+| **The Brain** | OpenAI (GPT-4o-mini) | Acts as the reasoning engine to decide *which* tool to call. |
 | **The Glue** | Python (`requests`) | The runtime that securely injects credentials and executes the AI's decision. |
 
 ---
@@ -131,7 +131,41 @@ Plaintext
 ✅ API Result: Error: Permission Denied. You do not have the scope to perform this action.
 This proves the API is protecting the database even if the AI tries to access it.
 
-Key Files
-main.py: The FastAPI server. It defines the Security Dependencies (has_scope), the Pydantic models, and the mocked database.
+Key Filesmain.py: The FastAPI server. It defines the Security Dependencies (has_scope), the Pydantic models, and the mocked database.agent.py: The OpenAI Client. It manages the tool definitions, handles the HTTP requests library, and injects the Authorization headers.🧩 Part 2: Model Context Protocol (MCP) LabThis section covers the Model Context Protocol (MCP) implementation. Unlike the HTTP/Rest implementation above, this demonstrates the standardized Host <-> Client <-> Server architecture used by tools like Claude Desktop and Cursor.Architecture OverviewIn this lab, we simulate the full MCP lifecycle locally using Standard IO (stdio).FileMCP RoleDescriptionmain_mcp.pyMCP Host & ClientActs as the AI Application (like Cursor/Claude). It initiates the connection, manages the session, and orchestrates the AI loop.agent_mcp.pyMCP ServerActs as the Tool Provider. It holds the CRM data and exposes specific capabilities (add_customer, get_customer) to the Host.MCP Flow DiagramCode snippetsequenceDiagram
+    participant H as 🖥️ MCP Host (main_mcp.py)
+    participant C as 🔌 MCP Client (Internal)
+    participant S as 🛠️ MCP Server (agent_mcp.py)
+    participant DB as 🗄️ CRM Data (Memory)
 
-agent.py: The OpenAI Client. It manages the tool definitions, handles the HTTP requests library, and injects the Authorization headers.
+    Note over H, S: Transport: Standard IO (stdin/stdout)
+
+    H->>S: Initialize Connection
+    S-->>H: Handshake (Protocol Version)
+    
+    H->>S: List Tools?
+    S-->>H: Returns: [add_customer, get_customer]
+    
+    Note over H: Host receives user prompt: "Add Alice"
+    
+    H->>C: Call Tool: add_customer(name="Alice")
+    C->>S: JSON-RPC Request
+    S->>DB: Write to CRM
+    S-->>C: Return "Success"
+    C-->>H: Display Result
+🚀 Running the MCP LabThis implementation requires the mcp python SDK.1. Install Additional DependencyBashpip install mcp
+2. Run the HostYou only need to run the Host script. The Host automatically launches the Server as a subprocess.Bashpython main_mcp.py
+3. Expected OutputPlaintextConnecting to server script: agent_mcp.py...
+Connected to server: CRM-MCP-Server
+Server capabilities: {'tools': ...}
+...
+User: I need to add a customer named Alice...
+Tool Output: Customer Alice added to CRM.
+🛠️ File DetailsThe Server (agent_mcp.py)This file uses @mcp.tool() to expose Python functions to the AI. It is completely isolated from the AI model itself—it simply executes logic when asked.Python@mcp.tool()
+def add_customer(name: str, email: str) -> str:
+    # Logic to add customer to database
+    return "Success"
+The Host (main_mcp.py)This file contains the MCP Client. It uses StdioServerParameters to tell the system how to start the server.Pythonserver_params = StdioServerParameters(
+    command="python",
+    args=["agent_mcp.py"] # The Host launches the Server
+)
+🧠 Key Takeaways for FDEsPortability: The agent_mcp.py server you built here can be plugged into Claude Desktop, Cursor, or VS Code without changing a single line of code.Security: The Host (AI) is isolated from the Server (Data). The Server defines strict boundaries on what the AI can and cannot do.

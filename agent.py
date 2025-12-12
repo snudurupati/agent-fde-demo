@@ -12,7 +12,7 @@ client = OpenAI(api_key=openai_api_key)
 
 # --- CONFIGURATION ---
 # Try changing this to "junior-agent-secret" to see the Refund fail!
-API_TOKEN = os.getenv("API_KEY")
+API_TOKEN = os.getenv("API_TOKEN")
 
 # Base Headers that include the Security Token
 HEADERS = {
